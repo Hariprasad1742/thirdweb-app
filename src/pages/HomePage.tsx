@@ -1,6 +1,7 @@
 import { ConnectButton } from "thirdweb/react";
 import { client } from "../client";
 import { Link } from "react-router-dom";
+import { TransactionStatus } from "../components/TransactionStatus";
 
 export function HomePage() {
   return (
@@ -20,6 +21,10 @@ export function HomePage() {
       </nav>
 
       {/* Hero Section */}
+      <section className="py-8">
+        <TransactionStatus />
+      </section>
+
       <section className="relative py-32 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,#3b82f6,transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#8b5cf6,transparent_50%)]" />
