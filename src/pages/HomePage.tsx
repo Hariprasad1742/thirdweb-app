@@ -38,10 +38,10 @@ export function HomePage() {
             </p>
             <div className="flex justify-center gap-4">
               <Link 
-                to="/begin" 
+                to="/contract" 
                 className="inline-block bg-white text-black px-8 py-4 rounded-full text-lg font-semibold hover:bg-zinc-200 transition-colors"
               >
-                Start New Contract
+                Create Contract
               </Link>
               <a 
                 href="#features" 
@@ -143,11 +143,11 @@ export function HomePage() {
             <p className="text-zinc-400 mb-8">
               Built on secure blockchain infrastructure, ensuring transparency and immutability for all construction contracts.
             </p>
-            <Link 
-              to="/begin" 
-              className="inline-block bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold hover:opacity-90 transition-opacity"
-            >
-              Get Started Now
+              <Link 
+                to="/contract" 
+                className="inline-block bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-full text-lg font-semibold hover:opacity-90 transition-opacity"
+              >
+                Create New Contract
             </Link>
           </div>
         </div>

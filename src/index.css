@@ -17,6 +17,70 @@
 
 @layer base {
   body {
-    @apply bg-zinc-950 text-neutral-200;
+    @apply bg-black text-white;
   }
+}
+
+@layer utilities {
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+/* Dark mode styles */
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: black;
+  color: white;
+}
+
+/* Ensure dark mode for all themed components */
+.dark body {
+  background-color: black;
+  color: white;
+}
+
+/* Consistent dark theme colors */
+.dark .bg-white {
+  background-color: black;
+}
+
+.dark .text-gray-900 {
+  color: white;
+}
+
+.dark .border-gray-200 {
+  border-color: rgb(38, 38, 38);
+}
+
+/* Form elements in dark mode */
+.dark input,
+.dark textarea,
+.dark select {
+  background-color: rgb(23, 23, 23);
+  border-color: rgb(38, 38, 38);
+  color: white;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(115, 115, 115);
+}
+
+/* Button styles in dark mode */
+.dark button {
+  background-color: rgb(37, 99, 235);
+  color: white;
+}
+
+.dark button:hover {
+  background-color: rgb(29, 78, 216);
+}
+
+.dark button:disabled {
+  background-color: rgb(75, 85, 99);
+  cursor: not-allowed;
 }

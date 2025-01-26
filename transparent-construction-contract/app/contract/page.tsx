@@ -1,13 +1,11 @@
 "use client"
 
-import { useState } from "react"
-import BidForm from "@/components/BidForm"
+import { useState, useEffect } from "react"
 import ApprovalWorkflow from "@/components/ApprovalWorkflow"
 import TransactionVerification from "@/components/TransactionVerification"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 
-type ContractStage = "bid" | "approval" | "transaction"
+type ContractStage = "approval" | "transaction"
 
 interface ContractState {
   bidId?: string
@@ -31,25 +29,22 @@ interface ContractState {
 }
 
 export default function ContractPage() {
-  const [stage, setStage] = useState<ContractStage>("bid")
+  const [stage, setStage] = useState<ContractStage>("approval")
   const [contractState, setContractState] = useState<ContractState>({})
 
-  const handleBidSubmission = (bidData: any) => {
-    const bidId = `BID-${Date.now()}`
-    const paymentSchedule = bidData.paymentSchedule.map((milestone: any) => ({
-      ...milestone,
-      amount: (parseFloat(bidData.basicInfo.bidAmount) * milestone.percentage) / 100,
-      completed: false
-    }))
-
-    setContractState({
-      bidId,
-      ...bidData.basicInfo,
-      inflationProtection: bidData.inflationProtection,
-      paymentSchedule
-    })
-    setStage("approval")
-  }
+  useEffect(() => {
+    // Get bidId from URL parameters
+    const params = new URLSearchParams(window.location.search)
+    const bidId = params.get('bidId')
+    
+    if (bidId) {
+      // Load contract data from localStorage
+      const contractData = localStorage.getItem(`contract-${bidId}`)
+      if (contractData) {
+        setContractState(JSON.parse(contractData))
+      }
+    }
+  }, [])
 
   const handleApprovalComplete = () => {
     setStage("transaction")
@@ -59,15 +54,6 @@ export default function ContractPage() {
     return (
       <div className="flex justify-center mb-8">
         <div className="flex items-center space-x-4">
-          <div className={`flex items-center ${stage === "bid" ? "text-blue-500" : "text-gray-500"}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
-              stage === "bid" ? "border-blue-500 bg-blue-50" : "border-gray-300"
-            }`}>
-              1
-            </div>
-            <span className="ml-2">Bid Submission</span>
-          </div>
-          <div className="w-16 h-0.5 bg-gray-300" />
           <div className={`flex items-center ${stage === "approval" ? "text-blue-500" : "text-gray-500"}`}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${
               stage === "approval" ? "border-blue-500 bg-blue-50" : "border-gray-300"
@@ -91,9 +77,18 @@ export default function ContractPage() {
   }
 
   const renderCurrentStage = () => {
+    if (!contractState.bidId) {
+      return (
+        <div className="text-center">
+          <p className="text-red-500">No contract data found. Please create a contract first.</p>
+          <a href="/create-contract" className="text-blue-500 hover:underline mt-4 block">
+            Go to Contract Creation
+          </a>
+        </div>
+      )
+    }
+
     switch (stage) {
-      case "bid":
-        return <BidForm onSubmit={handleBidSubmission} />
       case "approval":
         return (
           <ApprovalWorkflow
@@ -133,7 +128,7 @@ export default function ContractPage() {
     <div className="container mx-auto py-8">
       <Card className="mb-8">
         <CardHeader>
-          <CardTitle>Construction Contract Management</CardTitle>
+          <CardTitle>Contract Approval and Verification</CardTitle>
         </CardHeader>
         <CardContent>
           {renderStageIndicator()}

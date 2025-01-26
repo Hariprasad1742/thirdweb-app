@@ -1,16 +1,16 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { HomePage } from "./pages/HomePage";
-import { BeginPage } from "./pages/BeginPage";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { ContractPage } from "./pages/ContractPage";
+import { HomePage } from "./pages/HomePage";
 
-export function App() {
+export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/begin" element={<BeginPage />} />
-        <Route path="/contract" element={<ContractPage />} />
-      </Routes>
-    </BrowserRouter>
+    <Router>
+      <div className="min-h-screen bg-black text-white">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/contract" element={<ContractPage />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }

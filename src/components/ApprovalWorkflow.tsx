@@ -1,178 +1,129 @@
 import { useState } from "react";
-
-interface ApprovalLevel {
-  level: number;
-  title: string;
-  approver: string;
-  status: "pending" | "approved" | "rejected";
-  timestamp?: string;
-  comments?: string;
-}
-
-interface BidDetails {
-  bidId: string;
-  builderName: string;
-  agencyName: string;
-  projectName: string;
-  bidAmount: string;
-  inflationProtection: {
-    usePrePayment: boolean;
-    inflationClauseEnabled: boolean;
-    inflationPercentage: string;
-  };
-  paymentSchedule: {
-    description: string;
-    percentage: number;
-  }[];
-}
+import { prepareContractCall } from "thirdweb";
+import { useSendTransaction } from "thirdweb/react";
+import { contract } from "../main";
 
 interface ApprovalWorkflowProps {
-  bidDetails: BidDetails;
+  contractId: bigint;
   onComplete: () => void;
 }
 
-export function ApprovalWorkflow({ bidDetails, onComplete }: ApprovalWorkflowProps) {
-  const [approvalLevels, setApprovalLevels] = useState<ApprovalLevel[]>([
-    {
-      level: 1,
-      title: "Initial Technical Review",
-      approver: "Technical Officer",
-      status: "pending"
-    },
-    {
-      level: 2,
-      title: "Financial Assessment",
-      approver: "Financial Officer",
-      status: "pending"
-    },
-    {
-      level: 3,
-      title: "Legal Compliance",
-      approver: "Legal Officer",
-      status: "pending"
-    },
-    {
-      level: 4,
-      title: "Department Head Review",
-      approver: "Department Head",
-      status: "pending"
-    },
-    {
-      level: 5,
-      title: "Final Executive Approval",
-      approver: "Executive Officer",
-      status: "pending"
-    }
-  ]);
+export function ApprovalWorkflow({ contractId, onComplete }: ApprovalWorkflowProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [approvalData, setApprovalData] = useState({
+    approverNotes: "",
+    approvalAmount: ""
+  });
+  const { mutate: sendTransaction } = useSendTransaction();
 
-  const [currentLevel, setCurrentLevel] = useState(1);
-
-  const handleApproval = (level: number, status: "approved" | "rejected") => {
-    const newApprovalLevels = [...approvalLevels];
-    const levelIndex = level - 1;
-    
-    newApprovalLevels[levelIndex] = {
-      ...newApprovalLevels[levelIndex],
-      status,
-      timestamp: new Date().toISOString()
-    };
-    
-    setApprovalLevels(newApprovalLevels);
-    
-    if (status === "approved") {
-      if (level < 5) {
-        setCurrentLevel(level + 1);
-      } else {
-        onComplete();
-      }
-    }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setApprovalData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <span className="px-2 py-1 text-sm rounded bg-green-500 text-white">Approved</span>;
-      case "rejected":
-        return <span className="px-2 py-1 text-sm rounded bg-red-500 text-white">Rejected</span>;
-      default:
-        return <span className="px-2 py-1 text-sm rounded bg-yellow-500 text-white">Pending</span>;
+  const handleApproval = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      if (!approvalData.approvalAmount) {
+        throw new Error("Please enter approval amount");
+      }
+
+      const amountInWei = BigInt(Math.floor(parseFloat(approvalData.approvalAmount) * 1e18));
+
+      console.log("Preparing approval transaction...");
+      const transaction = prepareContractCall({
+        contract,
+        method: "function approveTransaction(uint256 _transactionId)",
+        params: [contractId],
+      });
+
+      console.log("Sending approval transaction...");
+      await sendTransaction(transaction);
+      console.log("Approval transaction sent successfully");
+
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to approve transaction");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="bg-zinc-900 p-8 rounded-lg border border-zinc-800 w-[800px]">
-      <h2 className="text-2xl font-bold mb-6">Bid Approval Workflow</h2>
-      
-      <div className="space-y-6">
-        {/* Bid Summary */}
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Bid Summary</h3>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <span className="font-medium">Bid ID:</span> {bidDetails.bidId}
-            </div>
-            <div>
-              <span className="font-medium">Builder:</span> {bidDetails.builderName}
-            </div>
-            <div>
-              <span className="font-medium">Agency:</span> {bidDetails.agencyName}
-            </div>
-            <div>
-              <span className="font-medium">Project:</span> {bidDetails.projectName}
-            </div>
-            <div>
-              <span className="font-medium">Amount:</span> ₹{bidDetails.bidAmount}
-            </div>
-          </div>
+    <div className="w-full max-w-2xl mx-auto">
+      <div className="space-y-6 p-6 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+            Approve Transaction
+          </h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Enter approval details and confirm the transaction
+          </p>
         </div>
 
-        <hr className="border-zinc-800" />
+        <form onSubmit={handleApproval} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="approvalAmount" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Approval Amount (ETH)
+            </label>
+            <input
+              type="number"
+              step="0.000001"
+              id="approvalAmount"
+              name="approvalAmount"
+              value={approvalData.approvalAmount}
+              onChange={handleInputChange}
+              required
+              className="w-full px-3 py-2 text-sm bg-transparent border border-gray-200 dark:border-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600"
+              placeholder="Enter approval amount in ETH"
+            />
+          </div>
 
-        {/* Approval Levels */}
-        <div className="space-y-4">
-          {approvalLevels.map((level) => (
-            <div
-              key={level.level}
-              className={`p-4 rounded-lg border ${
-                currentLevel === level.level
-                  ? "border-blue-500 bg-blue-900/20"
-                  : "border-zinc-800"
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">
-                    Level {level.level}: {level.title}
-                  </h4>
-                  <p className="text-sm text-zinc-400">Approver: {level.approver}</p>
-                </div>
-                <div className="flex items-center space-x-4">
-                  {getStatusBadge(level.status)}
-                  {currentLevel === level.level && level.status === "pending" && (
-                    <div className="space-x-2">
-                      <button
-                        className="px-3 py-1 text-sm border border-red-500 text-red-500 hover:bg-red-500/10 rounded"
-                        onClick={() => handleApproval(level.level, "rejected")}
-                      >
-                        Reject
-                      </button>
-                      <button
-                        className="px-3 py-1 text-sm bg-green-500 hover:bg-green-600 text-white rounded"
-                        onClick={() => handleApproval(level.level, "approved")}
-                      >
-                        Approve
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {level.timestamp && (
-                <p className="text-xs text-zinc-500 mt-2">
-                  {level.status} at: {new Date(level.timestamp).toLocaleString()}
-                </p>
-              )}
+          <div className="space-y-2">
+            <label htmlFor="approverNotes" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+              Approval Notes
+            </label>
+            <textarea
+              id="approverNotes"
+              name="approverNotes"
+              value={approvalData.approverNotes}
+              onChange={handleInputChange}
+              className="w-full min-h-[100px] px-3 py-2 text-sm bg-transparent border border-gray-200 dark:border-gray-800 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600"
+              placeholder="Enter any notes for this approval"
+            />
+          </div>
+
+          {error && (
+            <div className="text-sm text-red-600 dark:text-red-400">
+              {error}
             </div>
-          ))}
+          )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className={`w-full justify-center text-sm font-medium inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm
+              text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+              disabled:opacity-50 disabled:cursor-not-allowed dark:focus:ring-offset-gray-900`}
+          >
+            {isSubmitting ? 'Processing...' : 'Approve Transaction'}
+          </button>
+        </form>
+
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+            <span>Contract ID: {contractId.toString()}</span>
+            <span className="text-xs">
+              Approval is permanent
+            </span>
+          </div>
         </div>
       </div>
     </div>

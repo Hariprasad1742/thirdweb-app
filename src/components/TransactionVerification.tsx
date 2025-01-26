@@ -1,216 +1,262 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { prepareContractCall } from "thirdweb";
+import { useSendTransaction } from "thirdweb/react";
+import { contract } from "../main";
 
-interface Transaction {
-  id: string;
-  milestoneIndex: number;
-  amount: number;
-  timestamp: string;
-  status: "pending" | "verified" | "disputed";
-  inflationAdjustment?: number;
+interface TransactionVerificationProps {
+  contractId: bigint;
+}
+
+interface Milestone {
+  description: string;
+  percentage: number;
+  isCompleted: boolean;
 }
 
 interface ContractDetails {
-  bidId: string;
-  totalAmount: number;
-  inflationProtection: {
-    usePrePayment: boolean;
-    inflationClauseEnabled: boolean;
-    inflationPercentage: number;
-  };
-  paymentSchedule: {
-    description: string;
-    percentage: number;
-    amount: number;
-    completed: boolean;
-  }[];
+  projectName: string;
+  projectDescription: string;
+  builder: string;
+  selectedContractor: string;
+  totalAmount: bigint;
+  allocatedAmount: bigint;
+  remainingAmount: bigint;
+  startDate: bigint;
+  endDate: bigint;
+  status: number; // 0: Open, 1: InProgress, 2: Completed, 3: Cancelled
+  milestones: Milestone[];
 }
 
-export function TransactionVerification({ contractDetails }: { contractDetails: ContractDetails }) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [newAmount, setNewAmount] = useState("");
-  const [selectedMilestone, setSelectedMilestone] = useState(0);
+export function TransactionVerification({ contractId }: TransactionVerificationProps) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const { mutate: sendTransaction } = useSendTransaction();
+  const [contractDetails, setContractDetails] = useState<ContractDetails | null>(null);
 
-  const handleAddTransaction = () => {
-    const amount = parseFloat(newAmount);
-    if (isNaN(amount)) return;
+  useEffect(() => {
+    const fetchContractDetails = async () => {
+      try {
+        // Fetch contract details
+        const contractDetailsCall = prepareContractCall({
+          contract,
+          method: "function contracts(uint256) view returns (string, string, address, uint256, uint256, uint256, uint256, uint256, bool, uint256, bool, uint8, address)",
+          params: [contractId],
+        });
+        const contractData = await contract.execute(contractDetailsCall) as [
+          string, // projectName
+          string, // projectDescription
+          string, // builder
+          bigint, // totalAmount
+          bigint, // allocatedAmount
+          bigint, // remainingAmount
+          bigint, // startDate
+          bigint, // endDate
+          boolean, // inflationClauseEnabled
+          bigint, // inflationMaxDeviation
+          boolean, // prePaymentEnabled
+          number, // status
+          string // selectedContractor
+        ];
+        
+        // Fetch milestones
+        const milestonesCall = prepareContractCall({
+          contract,
+          method: "function getMilestones(uint256) view returns (tuple(string, uint256, bool)[])",
+          params: [contractId],
+        });
+        const milestonesData = await contract.execute(milestonesCall) as Array<[string, bigint, boolean]>;
 
-    const milestone = contractDetails.paymentSchedule[selectedMilestone];
-    let adjustedAmount = amount;
+        const [
+          projectName,
+          projectDescription,
+          builder,
+          totalAmount,
+          allocatedAmount,
+          remainingAmount,
+          startDate,
+          endDate,
+          _inflationClauseEnabled,
+          _inflationMaxDeviation,
+          _prePaymentEnabled,
+          status,
+          selectedContractor
+        ] = contractData;
 
-    // Calculate inflation adjustment if enabled
-    if (contractDetails.inflationProtection.inflationClauseEnabled) {
-      const maxAdjustment = milestone.amount * (contractDetails.inflationProtection.inflationPercentage / 100);
-      if (Math.abs(amount - milestone.amount) > maxAdjustment) {
-        alert("Amount exceeds allowed inflation adjustment range");
-        return;
+        const milestones = milestonesData.map((milestone: any) => ({
+          description: milestone[0],
+          percentage: Number(milestone[1]),
+          isCompleted: milestone[2]
+        }));
+
+        setContractDetails({
+          projectName,
+          projectDescription,
+          builder,
+          selectedContractor,
+          totalAmount,
+          allocatedAmount,
+          remainingAmount,
+          startDate,
+          endDate,
+          status,
+          milestones
+        });
+      } catch (err) {
+        setError("Failed to fetch contract details");
+        console.error(err);
       }
-      adjustedAmount = amount;
-    }
-
-    const newTransaction: Transaction = {
-      id: `TXN-${Date.now()}`,
-      milestoneIndex: selectedMilestone,
-      amount: adjustedAmount,
-      timestamp: new Date().toISOString(),
-      status: "pending",
-      inflationAdjustment: adjustedAmount - milestone.amount
     };
 
-    setTransactions([...transactions, newTransaction]);
-    setNewAmount("");
-  };
+    fetchContractDetails();
+  }, [contractId]);
 
-  const verifyTransaction = (transactionId: string) => {
-    const updatedTransactions = transactions.map(txn => {
-      if (txn.id === transactionId) {
-        const milestone = contractDetails.paymentSchedule[txn.milestoneIndex];
-        milestone.completed = true;
-        return { ...txn, status: "verified" as const };
-      }
-      return txn;
-    });
-    setTransactions(updatedTransactions);
-  };
+  const handleCompleteMilestone = async (milestoneIndex: number) => {
+    setError("");
+    setIsSubmitting(true);
 
-  const disputeTransaction = (transactionId: string) => {
-    setTransactions(
-      transactions.map(txn =>
-        txn.id === transactionId ? { ...txn, status: "disputed" as const } : txn
-      )
-    );
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "verified":
-        return <span className="px-2 py-1 text-sm rounded bg-green-500 text-white">Verified</span>;
-      case "disputed":
-        return <span className="px-2 py-1 text-sm rounded bg-red-500 text-white">Disputed</span>;
-      default:
-        return <span className="px-2 py-1 text-sm rounded bg-yellow-500 text-white">Pending</span>;
+    try {
+      console.log(`Completing milestone ${milestoneIndex}...`);
+      // Use prepareContractCall and sendTransaction for write operations
+      const tx = prepareContractCall({
+        contract,
+        method: "function completeMilestone(uint256 _contractId, uint256 _milestoneIndex)",
+        params: [contractId, BigInt(milestoneIndex)],
+      });
+      await sendTransaction(tx);
+      console.log("Milestone completed successfully");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to complete milestone");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const calculateTotalPaid = () => {
-    return transactions
-      .filter(txn => txn.status === "verified")
-      .reduce((sum, txn) => sum + txn.amount, 0);
+  const getStatusText = (status: number) => {
+    switch (status) {
+      case 0: return "Open";
+      case 1: return "In Progress";
+      case 2: return "Completed";
+      case 3: return "Cancelled";
+      default: return "Unknown";
+    }
   };
 
+  const formatDate = (timestamp: bigint) => {
+    if (timestamp === BigInt(0)) return "Not set";
+    return new Date(Number(timestamp) * 1000).toLocaleDateString();
+  };
+
+  const formatAmount = (amount: bigint) => {
+    return (Number(amount) / 1e18).toFixed(6) + " ETH";
+  };
+
+  if (!contractDetails) {
+    return (
+      <div className="w-full max-w-2xl mx-auto p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-gray-800 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-800 rounded w-1/2"></div>
+          <div className="h-4 bg-gray-800 rounded w-5/6"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-zinc-900 p-8 rounded-lg border border-zinc-800 w-[800px]">
-      <h2 className="text-2xl font-bold mb-6">Transaction Verification</h2>
-      
-      <div className="space-y-6">
-        {/* Contract Summary */}
-        <div className="space-y-2">
-          <h3 className="text-lg font-semibold">Contract Summary</h3>
-          <div className="grid grid-cols-2 gap-2 text-sm">
+    <div className="w-full max-w-2xl mx-auto">
+      <div className="space-y-6 p-6 bg-white dark:bg-black border border-gray-200 dark:border-gray-800 rounded-lg shadow-sm">
+        {/* Contract Details */}
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-xl font-semibold tracking-tight text-gray-900 dark:text-gray-50">
+              {contractDetails.projectName}
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {contractDetails.projectDescription}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="font-medium">Contract ID:</span> {contractDetails.bidId}
+              <span className="text-gray-500 dark:text-gray-400">Status:</span>
+              <span className="ml-2 font-medium text-gray-900 dark:text-gray-100">
+                {getStatusText(contractDetails.status)}
+              </span>
             </div>
             <div>
-              <span className="font-medium">Total Amount:</span> ₹{contractDetails.totalAmount}
+              <span className="text-gray-500 dark:text-gray-400">Total Amount:</span>
+              <span className="ml-2 font-medium text-gray-900 dark:text-gray-100">
+                {formatAmount(contractDetails.totalAmount)}
+              </span>
             </div>
             <div>
-              <span className="font-medium">Total Paid:</span> ₹{calculateTotalPaid()}
+              <span className="text-gray-500 dark:text-gray-400">Start Date:</span>
+              <span className="ml-2 font-medium text-gray-900 dark:text-gray-100">
+                {formatDate(contractDetails.startDate)}
+              </span>
             </div>
             <div>
-              <span className="font-medium">Remaining:</span> ₹
-              {contractDetails.totalAmount - calculateTotalPaid()}
+              <span className="text-gray-500 dark:text-gray-400">End Date:</span>
+              <span className="ml-2 font-medium text-gray-900 dark:text-gray-100">
+                {formatDate(contractDetails.endDate)}
+              </span>
             </div>
           </div>
         </div>
 
-        <hr className="border-zinc-800" />
-
-        {/* New Transaction */}
+        {/* Milestones */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Record New Transaction</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Payment Milestone</label>
-              <select
-                className="w-full p-2 bg-zinc-800 rounded border border-zinc-700"
-                value={selectedMilestone}
-                onChange={(e) => setSelectedMilestone(Number(e.target.value))}
-              >
-                {contractDetails.paymentSchedule.map((milestone, index) => (
-                  <option key={index} value={index} disabled={milestone.completed}>
-                    {milestone.description} (₹{milestone.amount})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Amount (₹)</label>
-              <input
-                type="number"
-                value={newAmount}
-                onChange={(e) => setNewAmount(e.target.value)}
-                placeholder="Enter amount"
-                className="w-full p-2 bg-zinc-800 rounded border border-zinc-700"
-              />
-            </div>
-          </div>
-          <button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
-            onClick={handleAddTransaction}
-          >
-            Record Transaction
-          </button>
-        </div>
-
-        <hr className="border-zinc-800" />
-
-        {/* Transaction History */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Transaction History</h3>
-          <div className="space-y-4">
-            {transactions.map((transaction) => (
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+            Payment Milestones
+          </h3>
+          <div className="space-y-3">
+            {contractDetails.milestones.map((milestone, index) => (
               <div
-                key={transaction.id}
-                className="p-4 rounded-lg border border-zinc-800"
+                key={index}
+                className="p-4 border border-gray-200 dark:border-gray-800 rounded-lg"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">
-                      {contractDetails.paymentSchedule[transaction.milestoneIndex].description}
+                  <div className="space-y-1">
+                    <h4 className="font-medium text-gray-900 dark:text-gray-100">
+                      {milestone.description}
                     </h4>
-                    <p className="text-sm text-zinc-400">
-                      Amount: ₹{transaction.amount}
-                      {transaction.inflationAdjustment !== 0 && (
-                        <span className="ml-2">
-                          (Adjustment: ₹{transaction.inflationAdjustment})
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {new Date(transaction.timestamp).toLocaleString()}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {milestone.percentage}% of total amount
                     </p>
                   </div>
                   <div className="flex items-center space-x-4">
-                    {getStatusBadge(transaction.status)}
-                    {transaction.status === "pending" && (
-                      <div className="space-x-2">
-                        <button
-                          className="px-3 py-1 text-sm border border-red-500 text-red-500 hover:bg-red-500/10 rounded"
-                          onClick={() => disputeTransaction(transaction.id)}
-                        >
-                          Dispute
-                        </button>
-                        <button
-                          className="px-3 py-1 text-sm bg-green-500 hover:bg-green-600 text-white rounded"
-                          onClick={() => verifyTransaction(transaction.id)}
-                        >
-                          Verify
-                        </button>
-                      </div>
+                    {milestone.isCompleted ? (
+                      <span className="px-2 py-1 text-sm font-medium text-green-600 bg-green-100 dark:text-green-400 dark:bg-green-900/20 rounded">
+                        Completed
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleCompleteMilestone(index)}
+                        disabled={isSubmitting}
+                        className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                      >
+                        Mark Complete
+                      </button>
                     )}
                   </div>
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {error && (
+          <div className="text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+            <span>Contract ID: {contractId.toString()}</span>
+            <span className="text-xs">
+              Milestone completion is permanent
+            </span>
           </div>
         </div>
       </div>
