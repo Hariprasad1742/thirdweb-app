@@ -7,6 +7,26 @@ import { TransactionVerification } from "../components/TransactionVerification";
 
 type ContractStage = "bid" | "approval" | "transaction";
 
+interface BidSubmissionData {
+  basicInfo: {
+    builderName: string;
+    agencyName: string;
+    projectName: string;
+    projectDescription: string;
+    bidAmount: string;
+    estimatedTimeline: string;
+  };
+  inflationProtection: {
+    usePrePayment: boolean;
+    inflationClauseEnabled: boolean;
+    inflationPercentage: string;
+  };
+  paymentSchedule: Array<{
+    description: string;
+    percentage: number;
+  }>;
+}
+
 interface ContractState {
   bidId?: string;
   builderName?: string;
@@ -32,9 +52,9 @@ export function ContractPage() {
   const [stage, setStage] = useState<ContractStage>("bid");
   const [contractState, setContractState] = useState<ContractState>({});
 
-  const handleBidSubmission = (bidData: any) => {
+  const handleBidSubmission = (bidData: BidSubmissionData) => {
     const bidId = `BID-${Date.now()}`;
-    const paymentSchedule = bidData.paymentSchedule.map((milestone: any) => ({
+    const paymentSchedule = bidData.paymentSchedule.map((milestone) => ({
       ...milestone,
       amount: (parseFloat(bidData.basicInfo.bidAmount) * milestone.percentage) / 100,
       completed: false,
